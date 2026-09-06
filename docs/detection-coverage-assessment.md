@@ -110,6 +110,8 @@ This is distinct from global service events (IAM, STS, root API calls), which ar
 
 **Consequence:** an analyst searching only the working region would conclude no root login occurred. A **single-region trail would not have captured the event at all.**
 
+![Root ConsoleLogin — awsRegion us-east-2](../screenshots/23-root-login-event.png)
+
 **Why it was caught:** `primary-trail` was configured multi-region with global service events enabled at creation.
 
 **Control validated.** No remediation required. Documented because the assumption that root activity always lands in us-east-1 is common and wrong.
@@ -199,6 +201,8 @@ Stated for balance, since a gap analysis reads worse than the system deserves:
 | Log integrity verification | Working | Digest files enabled at trail creation; validation possible |
 | Durable retention | Working | S3 delivery confirmed, no expiry configured |
 | Session-level attribution | Working | `sessionContext.creationDate` correlated 679 of 680 events |
+
+![Deployed metric filters](../screenshots/09-metric-filter.png)
 | Severity discrimination by target | **Partial** | Requires reading `requestParameters` manually; not encoded in the rule |
 
 ---

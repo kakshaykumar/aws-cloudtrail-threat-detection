@@ -31,6 +31,8 @@ Root activity does not present consistently. Two distinct shapes were observed i
 ```
 Verified against eventID `3aa8e2da-efb8-4e35-8e7a-eedccf58ecdb`.
 
+![Root ConsoleLogin event record](../screenshots/23-root-login-event.png)
+
 **Root API calls** — `userName` is present and contains the **account alias**, not an IAM user:
 
 ```json
@@ -98,6 +100,8 @@ Deactivating the key an `ASIA` credential derives from does **not** invalidate s
 
 Consequence: MFA protects the console path and does nothing for a leaked long-term access key. Key hygiene sits alongside MFA, not behind it.
 
+![CLI and console userAgent compared](../screenshots/08-cli-vs-console.png)
+
 ### The same API call looks different depending on origin
 
 `ListUsers` called from the CLI and from the console differed in five fields — `userAgent`, `accessKeyId` prefix, presence of `sessionCredentialFromConsole`, presence of MFA context, and `requestParameters`.
@@ -118,6 +122,10 @@ IAMFullAccess    → privilege escalation
 ```
 
 Identical in every field except `policyArn`. A rule keyed on event name alone cannot distinguish them. Severity must be conditional on the target of the action.
+
+![AttachUserPolicy ReadOnlyAccess](../screenshots/17-attach-policy-benign.png)
+
+![AttachUserPolicy IAMFullAccess](../screenshots/16-attach-policy-iamfullaccess.png)
 
 ### Detections have different shapes
 

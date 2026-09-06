@@ -154,8 +154,8 @@ Recording absent tactics matters: the attack chain here is incomplete by design.
 
 Techniques were assigned in this order:
 
-1. Attacks executed and evidence collected (Session 4)
-2. Timeline reconstructed from CloudTrail with `readOnly: false` filter (Session 5)
+1. Attacks executed and evidence collected
+2. Timeline reconstructed from CloudTrail with `readOnly: false` filter
 3. Each observed event examined for what it actually accomplished
 4. Technique selected to describe that effect, verified against attack.mitre.org
 5. `eventID` recorded as supporting evidence
@@ -206,4 +206,4 @@ All references in this document use the current names.
 | Disable or Modify Tools: Disable or Modify Cloud Log | T1685.002 | Defense Impairment | Yes | 1.0 | 12 May 2026 |
 | Indicator Removal | T1070 | Stealth | **No** — not applicable | 3.0 | 12 May 2026 |
 
-Evidence: `26-mitre-technique-verified.png`
+![T1685.002 verified on attack.mitre.org](../screenshots/24-mitre-technique-verified.png)

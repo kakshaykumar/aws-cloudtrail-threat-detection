@@ -76,6 +76,8 @@ The two exclusions exist because of a baseline finding: AWS itself calls into th
 
 Validated: fired on eventID `3aa8e2da` in 84 seconds.
 
+![Root usage alarm firing](screenshots/12-alarm-triggered-root.png)
+
 ### 2. IAM privilege escalation — T1098.001, T1098.003
 
 Matches eleven IAM API calls that grant privilege or credentials. An **action** rule — the identity is legitimate, the specific call is what matters.
@@ -91,6 +93,14 @@ Identical in every field except `requestParameters.policyArn`.
 
 **Severity lives in the target of the action, not the event name.** A rule keyed on `eventName` alone cannot separate routine administration from privilege escalation. The Athena version encodes this; the metric filter cannot.
 
+Benign — `ReadOnlyAccess`, eventID `aa8026e4`:
+
+![AttachUserPolicy with ReadOnlyAccess](screenshots/17-attach-policy-benign.png)
+
+Escalation — `IAMFullAccess`, eventID `f235ea6b`, 76 seconds later:
+
+![AttachUserPolicy with IAMFullAccess](screenshots/16-attach-policy-iamfullaccess.png)
+
 ### 3. CloudTrail tampering — T1685.002
 
 ```
@@ -105,9 +115,17 @@ Observed: `3c596c6d` at 06:06:01, `34c51c39` at 06:09:20 — same session, 3 min
 
 Metric filters evaluate one event at a time, so the pattern is invisible to the deployed rule. Query 4 in `detections/athena/hunting-queries.sql` expresses it as a self-join. That gap is the concrete argument for a correlation engine.
 
+![StopLogging event detail](screenshots/20-stoplogging-event.png)
+
 ---
 
 ## Detection validation
+
+Three metric filters deployed on the trail's CloudWatch log group, each feeding an alarm through SNS:
+
+![Deployed metric filters](screenshots/09-metric-filter.png)
+
+![Three alarms in OK state](screenshots/10-alarm-ok-state.png)
 
 Every rule was tested in both directions — it fired on the simulated attack, and its behaviour on benign activity was recorded rather than assumed.
 
@@ -119,6 +137,10 @@ Every rule was tested in both directions — it fired on the simulated attack, a
 
 The detection logic was correct throughout. The delivery mechanism was the failure.
 
+Alert delivered by SNS:
+
+![SNS alert email](screenshots/13-alert-email-root.png)
+
 ---
 
 ## Investigation
@@ -126,6 +148,10 @@ The detection logic was correct throughout. The delivery mechanism was the failu
 The incident was reconstructed from CloudTrail alone before consulting the record of what was actually done.
 
 **680 events in the window. Eleven were state-changing.** Filtering on `readOnly: false` removed 98% of the noise. A single console page load generates roughly 15 API calls across services never opened; a two-minute root browsing session produced 127 events, all read-only.
+
+Filtered to write events, the entire incident is eleven lines:
+
+![Filtered timeline, 11 write events](screenshots/22-timeline-output.png)
 
 **Attack path:**
 
@@ -137,6 +163,10 @@ Root ConsoleLogin (MFA)  →  Discovery  →  CreateUser  →  AttachUserPolicy 
 **Session correlation:** `sessionContext.creationDate` of `2026-09-03T04:50:01Z` appears on 679 of 680 events. The IAM escalation and the CloudTrail destruction — 34 minutes apart, different services — came from one console login. Pivoting on the credential rather than the username groups activity into sessions and survives an attacker changing networks.
 
 **A finding about the method itself:** the first timeline pivoted on username and returned zero root events, because root activity carries no `userName` field at all. The root login was recovered only by searching on event name. The choice of pivot defines the blind spot.
+
+The recovered root sign-in — note `awsRegion` is `us-east-2`, not the account's working region, because that region's sign-in endpoint served the request:
+
+![Root ConsoleLogin event](screenshots/23-root-login-event.png)
 
 **The honest limit:** every event was MFA-authenticated, from the account's habitual source IP, within one legitimate session. There is no technical indicator of compromise anywhere in the data. Had the identity been an adversary holding valid stolen credentials, the log record would be byte-identical. CloudTrail establishes *what* happened and *which identity* did it with certainty; it cannot establish whether that identity was authorized.
 
@@ -156,11 +186,15 @@ Containment and eradication were performed rather than described, so that the re
 | 06:34:58 | `DeleteAccessKey` | Eradication |
 | 06:35:18 | `DeleteUser` | Eradication |
 
-Full eradication in 94 seconds, all five actions recorded by CloudTrail.
+Full eradication in 94 seconds, all five actions recorded by CloudTrail:
+
+![Containment actions logged](screenshots/25-containment-actions.png)
 
 The key was deactivated **before** permissions were detached. Reversing that order leaves a window where the credential still works with elevated privilege. Note that for a role rather than an IAM user this would be insufficient — `ASIA` session credentials already issued remain valid until expiry, requiring session revocation rather than key deactivation.
 
 **Recovery:** log integrity verified with `aws cloudtrail validate-logs` — 25/25 digest files and 156/156 log files valid across the incident date. Nothing was altered.
+
+![Log file validation output](screenshots/26-log-validation.png)
 
 ---
 
@@ -201,6 +235,8 @@ Full analysis with remediation priority: [`docs/detection-coverage-assessment.md
 
 **ATT&CK identifiers change between versions.** T1562.008 was renumbered to T1685.002, and the Defense Evasion tactic was split into Stealth and Defense Impairment. Separately, `DeleteTrail` was initially mapped to T1070 (Indicator Removal) — invalid, because T1070 does not list IaaS among its platforms. Both errors were found by checking attack.mitre.org rather than working from memory.
 
+![T1685.002 verified on attack.mitre.org](screenshots/24-mitre-technique-verified.png)
+
 Full list: [`docs/lessons-learned.md`](docs/lessons-learned.md)
 
 ---
@@ -213,6 +249,10 @@ Full list: [`docs/lessons-learned.md`](docs/lessons-learned.md)
 2. **Log file validation enabled at trail creation** — digests are only produced for logs delivered afterward
 3. CloudWatch Logs integration — required for any alerting
 4. A second disposable trail, so tampering can be simulated without losing visibility
+
+![Trail configuration](screenshots/02-trail-config.png)
+
+![Both trails](screenshots/04-trails-list.png)
 
 **Deploy the detections:** patterns in `detections/cloudwatch/metric-filters.json`, applied as CloudWatch metric filters on the trail's log group, each with an alarm at threshold ≥1, period 60s, statistic Sum, and `TreatMissingData: notBreaching`. Security events are rare, so without that last setting alarms sit in `INSUFFICIENT_DATA` and appear broken.
 
@@ -240,6 +280,21 @@ Full list: [`docs/lessons-learned.md`](docs/lessons-learned.md)
 - Enable S3 data events scoped to the log bucket
 - Correlate GuardDuty findings against the CloudTrail timeline
 - Deploy the whole build as Terraform
+
+---
+
+## Full evidence
+
+All 26 screenshots are in [`screenshots/`](screenshots/), numbered in the order the work was done. Account identifiers, source IP, credential IDs, and email have been redacted.
+
+| Range | Covers |
+|---|---|
+| 01–05 | Account hardening, trail configuration, log delivery |
+| 06–08 | Reading CloudTrail events, CLI vs console origin |
+| 09–11 | Deployed metric filters, alarms, SNS subscription |
+| 12–19 | Each of the three attacks: alarm state and alert delivered |
+| 20–23 | Investigation — event detail, timeline, session pivot, root login |
+| 24–26 | ATT&CK verification, containment, log validation |
 
 ---
 

@@ -1,6 +1,6 @@
-# Ground Truth Log — Session 4
+# Ground Truth Log
 
-**Purpose:** Record exactly what was done, when, so the reconstructed timeline in Session 5 can be checked against known activity.
+**Purpose:** Record exactly what was done, and when, so the timeline reconstructed from logs can be checked against known activity.
 
 **Timezone:** Local = EST (UTC−4). All CloudTrail timestamps are UTC.
 **Account:** 111122223333
@@ -36,9 +36,13 @@
 
 ### Notes
 
-- Metric counted 3 events from what felt like a single short session — consistent with the console-noise finding from Session 2.
+- Metric counted 3 events from what felt like a single short session — consistent with the console-noise finding from the baseline.
 - Viewing IAM while in root mirrors the reconnaissance stage of a real root-compromise pattern, even though this instance was benign.
-- Evidence: `12-alarm-triggered-root.png`, `13-alert-email-root.png`
+**Evidence**
+
+![Root usage alarm in ALARM state](../screenshots/12-alarm-triggered-root.png)
+
+![SNS alert email for root usage](../screenshots/13-alert-email-root.png)
 
 ---
 
@@ -87,7 +91,21 @@ An alarm keyed on `eventName` alone cannot separate routine administration from 
 - Step 2 was legitimate administrative work and still triggered the alarm — a **deliberately generated false positive**, documented rather than tuned away.
 - The access key created in step 4 has an `AKIA` prefix: long-term, non-expiring, and not subject to MFA. This is the persistence artifact an attacker would want.
 - Filtering Event history on `Read-only = false` reduced the entire attack to four lines.
-- Evidence: `14-alarm-triggered-iam.png`, `15-alert-email-iam.png`, `16-attach-policy-event.png`, `17-attach-policy-benign.png`
+**Evidence**
+
+![IAM escalation alarm in ALARM state](../screenshots/14-alarm-triggered-iam.png)
+
+![First alert — 05:38:06](../screenshots/15a-alert-email-iam.png)
+
+![Second alert — 05:40:06, alarm re-armed](../screenshots/15b-alert-email-iam.png)
+
+Escalation — `IAMFullAccess`:
+
+![AttachUserPolicy IAMFullAccess](../screenshots/16-attach-policy-iamfullaccess.png)
+
+Control case — `ReadOnlyAccess`, 76 seconds earlier, identical in every other field:
+
+![AttachUserPolicy ReadOnlyAccess](../screenshots/17-attach-policy-benign.png)
 
 ---
 
@@ -159,7 +177,15 @@ The two-trail design worked as intended: `secondary-trail` was destroyed while `
 ### Notes
 
 - `DeleteTrail` executed with **no confirmation prompt**. Destroying an audit trail was a single click.
-- Evidence: `18-alarm-triggered-tampering.png`, `19-alert-email-tampering.png`, `20-stoplogging-event.png`, `21-primary-trail-survived.png`
+**Evidence**
+
+![Tampering alarm](../screenshots/18-alarm-triggered-tampering.png)
+
+![SNS alert for tampering — the only one received](../screenshots/19-alert-email-tampering.png)
+
+![StopLogging event detail](../screenshots/20-stoplogging-event.png)
+
+![primary-trail still logging after secondary-trail was destroyed](../screenshots/21-primary-trail-survived.png)
 
 ---
 
@@ -204,7 +230,13 @@ Results found for 2026-09-03T00:00:00Z to 2026-09-03T23:59:59Z:
 
 No log file was altered or removed during or after the simulated attack. This is the recovery step that the log file validation setting — enabled at trail creation and not applicable retroactively — exists to support.
 
-Evidence: `25-containment-actions.png`, `26-log-validation.png`, `evidence/log-validation-output.txt`
+**Evidence**
+
+![Containment and eradication actions logged by CloudTrail](../screenshots/25-containment-actions.png)
+
+![Log file validation output](../screenshots/26-log-validation.png)
+
+Raw output: `evidence/log-validation-output.txt`
 
 ---
 

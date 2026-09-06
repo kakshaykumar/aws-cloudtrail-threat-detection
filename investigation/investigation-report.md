@@ -85,6 +85,8 @@ Recovered separately (see 4.1): root `ConsoleLogin` at 05:14:46, eventID `3aa8e2
 
 ## 4. Key evidence
 
+![Write events in the incident window](../screenshots/22-timeline-output.png)
+
 ### 4.1 Root account activity
 
 | Field | Value |
@@ -105,6 +107,8 @@ Not determinable from the log. The login succeeded with MFA from the account's h
 
 The initial timeline was built by pivoting on `User name = ak-admin`. That returned all 680 events and every state change above — and **zero root events**. Root activity carries no IAM username, so a username pivot silently excludes it. The root login was recovered only by rerunning the search on `Event name = ConsoleLogin` across a wider window.
 
+![Root ConsoleLogin recorded in us-east-2](../screenshots/23-root-login-event.png)
+
 **Secondary finding — region.** The `ConsoleLogin` was written to us-east-2 because that region's `signin.amazonaws.com` endpoint served the request. This is distinct from global service events (IAM, STS, root API calls), which consistently land in us-east-1. A single-region trail would not have captured it at all. The multi-region configuration on `primary-trail` is the only reason this evidence exists.
 
 ---
@@ -124,9 +128,17 @@ Two `AttachUserPolicy` events occurred against the same target.
 | Event ID | `aa8026e4` | `f235ea6b` |
 | Severity | Informational | **Critical** |
 
+Escalation — `IAMFullAccess`:
+
+![AttachUserPolicy IAMFullAccess](../screenshots/16-attach-policy-iamfullaccess.png)
+
 **What is the only field that differs?**
 
 `requestParameters.policyArn`. Event name, identity, source IP, user agent, session context, MFA status, and region are identical. The two events are 76 seconds apart.
+
+Benign case — `ReadOnlyAccess`:
+
+![AttachUserPolicy ReadOnlyAccess](../screenshots/17-attach-policy-benign.png)
 
 **Why does this matter for detection design?**
 
@@ -161,6 +173,8 @@ A long-term programmatic credential survives console session expiry and bypasses
 
 Two additional `PutBucketPolicy` events (06:10:21, 06:10:28) were generated against the log bucket as a side effect of the prefix change. These were **not** matched by the tampering detection, which is scoped to `cloudtrail.amazonaws.com` event names only.
 
+![StopLogging event detail](../screenshots/20-stoplogging-event.png)
+
 **Did the attacker restore logging after stopping it? What would that accomplish?**
 
 Yes — `StartLogging` at 06:09:20, three minutes nineteen seconds after `StopLogging`. Restarting creates a bounded gap in the record while leaving the trail in a normal-looking state. An analyst checking current configuration would see logging enabled and find nothing wrong. The gap is only visible by examining event history, not current state.
@@ -176,6 +190,8 @@ Neither event is suspicious alone. The sequence is the detection.
 "LatestCloudWatchLogsDeliveryTime": "2026-09-03T02:14:21-04:00",
 "TimeLoggingStopped": ""
 ```
+
+![primary-trail survived](../screenshots/21-primary-trail-survived.png)
 
 `TimeLoggingStopped` is empty, meaning `primary-trail` was never stopped. It recorded every step of `secondary-trail`'s destruction, including the `DeleteTrail` call itself.
 

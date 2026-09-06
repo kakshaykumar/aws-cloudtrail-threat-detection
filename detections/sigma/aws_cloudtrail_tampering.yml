@@ -1,0 +1,91 @@
+title: AWS CloudTrail Logging Disabled or Modified
+id: 8a1b3c4d-3333-4a2b-9c3d-ct00003tamper
+status: experimental
+description: >
+  Detects modification, disabling, or deletion of CloudTrail logging, including
+  changes to event selectors that silently reduce coverage without stopping the
+  trail. This is defense evasion: a successful StopLogging or DeleteTrail blinds
+  every other detection built on CloudTrail, so it is the last event that will
+  ever be recorded from that trail. This is the primary argument for delivering
+  the trail to CloudWatch Logs for near-real-time alerting rather than relying
+  on batch analysis of S3 objects.
+references:
+  - https://attack.mitre.org/techniques/T1685/002/
+author: Akshaykumar Kathirvelu
+date: 2026/08/29
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection_trail:
+    eventSource: 'cloudtrail.amazonaws.com'
+    eventName:
+      - 'StopLogging'
+      - 'DeleteTrail'
+      - 'UpdateTrail'
+      - 'PutEventSelectors'
+  selection_logstore:
+    eventSource: 's3.amazonaws.com'
+    eventName:
+      - 'PutBucketPolicy'
+      - 'DeleteBucketPolicy'
+      - 'PutBucketLifecycleConfiguration'
+      - 'DeleteBucket'
+  selection_key:
+    eventSource: 'kms.amazonaws.com'
+    eventName:
+      - 'DisableKey'
+      - 'ScheduleKeyDeletion'
+  filter_failed:
+    errorCode|exists: true
+  condition: 1 of selection_* and not filter_failed
+falsepositives:
+  - Planned trail reconfiguration during a maintenance window
+  - Decommissioning a trail as part of an approved change
+  - Lifecycle policy changes on the log bucket for cost management
+level: critical
+tags:
+  - attack.defense-impairment
+  - attack.t1685.002
+fields:
+  - eventTime
+  - eventName
+  - userIdentity.arn
+  - userIdentity.accessKeyId
+  - requestParameters.name
+  - sourceIPAddress
+  - userAgent
+  - eventID
+
+# Notes:
+#
+# StartLogging is deliberately NOT in this rule. On its own it is benign - it
+# fires whenever a trail is created or restored. It becomes significant only in
+# sequence: StopLogging followed by StartLogging from the same identity within
+# a short window is an attacker creating and then closing a visibility gap.
+# That correlation belongs in a sequence rule or in triage, not here, because
+# alerting on StartLogging alone produces noise on every legitimate trail
+# creation.
+#
+# The s3 and kms selections cover the storage layer. An attacker who cannot
+# call cloudtrail:StopLogging may still be able to make delivered logs
+# unreadable or short-lived by changing the bucket policy, setting an
+# aggressive lifecycle expiry, or disabling the KMS key encrypting the logs.
+#
+# Response note: after re-enabling logging, run
+#   aws cloudtrail validate-logs --trail-arn <arn> --start-time <t>
+# to determine whether delivered log files were altered, and treat the interval
+# between StopLogging and StartLogging as an unknown-activity gap rather than
+# as a period of no activity.
+
+# Validation
+#   Tested 2026-09-03 against simulated log tampering on a disposable trail.
+#   True positives: 3c596c6d (StopLogging), 34c51c39 (StartLogging),
+#                   44d038eb and 622213b9 (UpdateTrail), 19580243 (DeleteTrail).
+#   Time to alert: ~3 min 28 sec, driven by CloudWatch Logs ingestion lag.
+#   Known gap: 5 matching events produced only 1 notification. CloudWatch alarms
+#   notify on state transition, not per event, so the trail was deleted while the
+#   alarm was already breaching and silent. Per-event delivery requires EventBridge.
+#   Known gap: two PutBucketPolicy events against the log bucket (5bfa1454,
+#   240b1b5e) were not matched. This rule is scoped to cloudtrail.amazonaws.com
+#   and does not cover attacks on the S3 log store.

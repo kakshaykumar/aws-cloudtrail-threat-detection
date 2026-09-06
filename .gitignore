@@ -1,0 +1,45 @@
+# Credentials — never commit
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+.aws/
+aws_credentials
+
+# AWS downloads access keys as CSV. This is the single most common
+# accidental credential commit in AWS repositories.
+*.csv
+accessKeys*
+new_user_credentials*
+
+# Private working notes — real account ID, source IP, key IDs
+notes-private.*
+notes-private/
+*-private.*
+private/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+__MACOSX/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Archives
+*.zip
+*.tar.gz
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/

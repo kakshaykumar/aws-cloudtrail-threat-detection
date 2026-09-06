@@ -1,0 +1,62 @@
+title: AWS Root Account Usage
+id: 8a1b3c4d-1111-4a2b-9c3d-root0001usage
+status: experimental
+description: >
+  Detects any use of the AWS root account. The root account has unrestricted
+  privileges, cannot be constrained by IAM policy, and is not restricted by
+  Service Control Policies in the management account. It should never be used
+  for routine operations, so any occurrence warrants investigation.
+references:
+  - https://attack.mitre.org/techniques/T1078/004/
+  - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_root-user.html
+author: Akshaykumar Kathirvelu
+date: 2026/08/29
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    userIdentity.type: 'Root'
+  filter_service_invoked:
+    userIdentity.invokedBy|exists: true
+  filter_service_event:
+    eventType: 'AwsServiceEvent'
+  condition: selection and not 1 of filter_*
+falsepositives:
+  - Deliberate break-glass access during an incident
+  - Initial account setup and billing tasks that require root
+  - Account-level operations with no IAM equivalent (closing the account,
+    changing the support plan, registering as a seller)
+level: high
+tags:
+  - attack.initial-access
+  - attack.stealth
+  - attack.persistence
+  - attack.privilege-escalation
+  - attack.t1078.004
+fields:
+  - eventTime
+  - eventName
+  - sourceIPAddress
+  - userAgent
+  - additionalEventData.MFAUsed
+  - responseElements.ConsoleLogin
+  - awsRegion
+  - eventID
+
+# Severity tiering notes (applied at triage, not in the rule):
+#   CRITICAL - additionalEventData.MFAUsed = "No"
+#   CRITICAL - sourceIPAddress outside known-good ranges
+#   HIGH     - root API activity beyond ConsoleLogin
+#   MEDIUM   - MFA used, known source IP, expected maintenance window
+#
+# Note: root activity and other global service events are recorded in
+# us-east-1 regardless of where the session originated.
+
+# Validation
+#   Tested 2026-09-03 against simulated root console login.
+#   True positive: fired on eventID 3aa8e2da (ConsoleLogin, userIdentity.type=Root).
+#   Time to alert: ~1 min 24 sec via CloudWatch metric filter -> alarm -> SNS.
+#   Note: the ConsoleLogin event was recorded in us-east-2, not the account's
+#   working region, because that region's signin endpoint served the request.
+#   A single-region trail would not have captured it.

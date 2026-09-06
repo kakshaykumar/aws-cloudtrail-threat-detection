@@ -1,0 +1,7 @@
+Validating log files for trail arn:aws:cloudtrail:us-east-1:111122223333:trail/primary-trail between 2026-09-03T00:00:00Z and 2026-09-03T23:59:59Z
+
+Results requested for 2026-09-03T00:00:00Z to 2026-09-03T23:59:59Z
+Results found for 2026-09-03T00:00:00Z to 2026-09-03T23:59:59Z:
+
+25/25 digest files valid
+156/156 log files valid

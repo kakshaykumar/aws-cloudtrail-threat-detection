@@ -1,0 +1,125 @@
+{
+  "_comment": "CloudWatch Logs metric filters and alarms deployed against the CloudTrail log group. Account ID and log group name are redacted; substitute your own before applying. Filter patterns map to the Sigma rules in ../sigma/.",
+  "logGroupName": "aws-cloudtrail-logs-<ACCOUNT_ID>-<SUFFIX>",
+  "metricNamespace": "CloudTrailSecurityMetrics",
+  "snsTopicArn": "arn:aws:sns:us-east-1:<ACCOUNT_ID>:cloudtrail-security-alerts",
+  "metricFilters": [
+    {
+      "filterName": "RootAccountUsage",
+      "sigmaRule": "aws_root_account_usage.yml",
+      "mitre": "T1078.004",
+      "filterPattern": "{ $.userIdentity.type = \"Root\" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != \"AwsServiceEvent\" }",
+      "metricName": "RootAccountUsageCount",
+      "metricValue": "1",
+      "defaultValue": 0,
+      "notes": "The invokedBy and eventType clauses exclude activity AWS services perform on the account's behalf, which would otherwise present as root usage.",
+      "validation": {
+        "validated": "2026-09-03",
+        "truePositiveEventIds": [
+          "3aa8e2da"
+        ],
+        "timeToAlertSeconds": 84,
+        "notificationsReceived": 1,
+        "matchingEvents": 3
+      }
+    },
+    {
+      "filterName": "CloudTrailTampering",
+      "sigmaRule": "aws_cloudtrail_tampering.yml",
+      "mitre": "T1685.002",
+      "filterPattern": "{ ($.eventName = \"StopLogging\") || ($.eventName = \"DeleteTrail\") || ($.eventName = \"UpdateTrail\") || ($.eventName = \"PutEventSelectors\") }",
+      "metricName": "CloudTrailTamperingCount",
+      "metricValue": "1",
+      "defaultValue": 0,
+      "notes": "PutEventSelectors is included because coverage can be silently narrowed without ever stopping the trail. StartLogging is excluded; see the Sigma rule for reasoning.",
+      "validation": {
+        "validated": "2026-09-03",
+        "truePositiveEventIds": [
+          "3c596c6d",
+          "34c51c39",
+          "44d038eb",
+          "622213b9",
+          "19580243"
+        ],
+        "timeToAlertSeconds": 208,
+        "notificationsReceived": 1,
+        "matchingEvents": 5,
+        "knownGap": "5 matching events produced 1 notification - CloudWatch alarms notify on state transition, not per event. PutBucketPolicy events against the log bucket (5bfa1454, 240b1b5e) are out of scope for this filter."
+      }
+    },
+    {
+      "filterName": "IAMPrivilegeEscalation",
+      "sigmaRule": "aws_iam_privilege_escalation.yml",
+      "mitre": "T1098.001, T1098.003, T1136.003",
+      "filterPattern": "{ ($.eventName = \"PutUserPolicy\") || ($.eventName = \"PutRolePolicy\") || ($.eventName = \"AttachUserPolicy\") || ($.eventName = \"AttachRolePolicy\") || ($.eventName = \"AttachGroupPolicy\") || ($.eventName = \"CreatePolicyVersion\") || ($.eventName = \"SetDefaultPolicyVersion\") || ($.eventName = \"CreateAccessKey\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") }",
+      "metricName": "IAMPrivilegeEscalationCount",
+      "metricValue": "1",
+      "defaultValue": 0,
+      "notes": "Fires on legitimate administrative activity by design. Severity is determined at triage by requestParameters.policyArn, not by the API call itself.",
+      "validation": {
+        "validated": "2026-09-03",
+        "truePositiveEventIds": [
+          "f235ea6b",
+          "7077c297"
+        ],
+        "falsePositiveEventIds": [
+          "aa8026e4"
+        ],
+        "falsePositiveNote": "AttachUserPolicy with ReadOnlyAccess - legitimate administration, generated deliberately as a control case",
+        "timeToAlertSeconds": 109,
+        "notificationsReceived": 2,
+        "matchingEvents": 3,
+        "knownGap": "CreateUser (80f8ece9) not matched by this filter"
+      }
+    }
+  ],
+  "alarms": [
+    {
+      "alarmName": "Alarm-RootAccountUsage",
+      "metricName": "RootAccountUsageCount",
+      "statistic": "Sum",
+      "period": 300,
+      "threshold": 1,
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "evaluationPeriods": 1,
+      "treatMissingData": "notBreaching",
+      "severity": "HIGH"
+    },
+    {
+      "alarmName": "Alarm-CloudTrailTampering",
+      "metricName": "CloudTrailTamperingCount",
+      "statistic": "Sum",
+      "period": 300,
+      "threshold": 1,
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "evaluationPeriods": 1,
+      "treatMissingData": "notBreaching",
+      "severity": "CRITICAL"
+    },
+    {
+      "alarmName": "Alarm-IAMPrivilegeEscalation",
+      "metricName": "IAMPrivilegeEscalationCount",
+      "statistic": "Sum",
+      "period": 300,
+      "threshold": 1,
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "evaluationPeriods": 1,
+      "treatMissingData": "notBreaching",
+      "severity": "MEDIUM"
+    }
+  ],
+  "_designNotes": {
+    "threshold": "Set to 1 because these are low-frequency, high-signal events. Volume-based thresholds are inappropriate here; a single occurrence is the signal.",
+    "treatMissingData": "notBreaching prevents the alarms from sitting in INSUFFICIENT_DATA when no matching events occur, which is the normal state.",
+    "period": "300 seconds matches CloudTrail's delivery characteristics. Shorter periods do not improve detection latency because delivery to CloudWatch Logs is itself the bounding factor.",
+    "whyCloudWatchLogsNotS3": "S3 delivery lags 5-15 minutes and cannot trigger an action. CloudWatch Logs is the only path that supports alarming, which matters most for the tampering detection since StopLogging is the last event a trail will record."
+  },
+  "_validationSummary": {
+    "testedOn": "2026-09-03",
+    "scenariosDetected": "3 of 3",
+    "totalMatchingEvents": 11,
+    "totalNotificationsReceived": 4,
+    "falsePositivesObserved": 1,
+    "primaryLimitation": "CloudWatch metric alarms notify on state transition rather than per event. Per-event delivery requires EventBridge rules."
+  }
+}

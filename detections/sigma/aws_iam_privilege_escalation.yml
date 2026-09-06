@@ -1,0 +1,88 @@
+title: AWS IAM Privilege Escalation Activity
+id: 8a1b3c4d-2222-4a2b-9c3d-iam00002esc
+status: experimental
+description: >
+  Detects IAM API calls commonly used to escalate privileges or establish
+  persistence after an initial compromise. Includes both managed and inline
+  policy attachment, policy version manipulation, trust policy changes, and
+  credential creation. Policy version manipulation is included because an
+  identity able to call CreatePolicyVersion with setAsDefault can modify a
+  policy already attached to itself, escalating without any attachment event.
+references:
+  - https://attack.mitre.org/techniques/T1098/001/
+  - https://attack.mitre.org/techniques/T1098/003/
+  - https://attack.mitre.org/techniques/T1136/003/
+author: Akshaykumar Kathirvelu
+date: 2026/08/29
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    eventSource: 'iam.amazonaws.com'
+    eventName:
+      - 'AttachUserPolicy'
+      - 'AttachRolePolicy'
+      - 'AttachGroupPolicy'
+      - 'PutUserPolicy'
+      - 'PutRolePolicy'
+      - 'PutGroupPolicy'
+      - 'CreatePolicyVersion'
+      - 'SetDefaultPolicyVersion'
+      - 'UpdateAssumeRolePolicy'
+      - 'CreateAccessKey'
+      - 'CreateLoginProfile'
+      - 'UpdateLoginProfile'
+      - 'AddUserToGroup'
+      - 'CreateUser'
+  filter_failed:
+    errorCode|exists: true
+  condition: selection and not filter_failed
+falsepositives:
+  - Routine administrative work during onboarding or offboarding
+  - Infrastructure-as-code runs (Terraform, CloudFormation) applying IAM changes
+  - CI/CD pipelines that rotate credentials on a schedule
+  - Automated provisioning tools with a service identity
+level: medium
+tags:
+  - attack.privilege-escalation
+  - attack.persistence
+  - attack.t1098.001
+  - attack.t1098.003
+  - attack.t1136.003
+fields:
+  - eventTime
+  - eventName
+  - userIdentity.arn
+  - userIdentity.accessKeyId
+  - requestParameters.policyArn
+  - requestParameters.userName
+  - requestParameters.policyDocument
+  - sourceIPAddress
+  - userAgent
+  - eventID
+
+# Severity tiering notes (applied at triage, not in the rule):
+#   CRITICAL - requestParameters.policyArn ends in AdministratorAccess,
+#              IAMFullAccess, or PowerUserAccess
+#   CRITICAL - inline policyDocument contains Action "*" with Resource "*"
+#   CRITICAL - the acting identity was itself created within the last 24h
+#   HIGH     - CreateAccessKey where the target user is not the caller
+#   HIGH     - UpdateAssumeRolePolicy widening trust to a wildcard principal
+#   LOW      - attachment of ReadOnlyAccess or a scoped job-function policy
+#
+# This rule fires on legitimate admin work by design. Severity comes from the
+# policy involved, not from the API call. Tune by excluding known automation
+# principals (Terraform role, CI pipeline role) rather than by removing events.
+
+# Validation
+#   Tested 2026-09-03 against simulated privilege escalation.
+#   True positives: eventID f235ea6b (AttachUserPolicy / IAMFullAccess),
+#                   eventID 7077c297 (CreateAccessKey).
+#   False positive generated deliberately as a control case:
+#                   eventID aa8026e4 (AttachUserPolicy / ReadOnlyAccess).
+#   The two AttachUserPolicy events were 76 seconds apart, from the same identity,
+#   same source IP and same session, and differed only in requestParameters.policyArn.
+#   Severity must therefore be conditional on the policy ARN, not the event name.
+#   Known gap: CreateUser is not matched by this rule. Target identity creation
+#   (eventID 80f8ece9) generated no alert.

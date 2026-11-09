@@ -112,7 +112,7 @@ Control case — `ReadOnlyAccess`, 76 seconds earlier, identical in every other 
 ## Attack 3 — CloudTrail tampering
 
 **Scenario:** Logging disabled, restored, modified, and destroyed to evade detection
-**MITRE ATT&CK:** T1685.002 — Disable or Modify Tools: Disable or Modify Cloud Log *(verified against attack.mitre.org 2026-09-03; formerly T1685.002)*
+**MITRE ATT&CK:** T1685.002 — Disable or Modify Tools: Disable or Modify Cloud Log *(verified against attack.mitre.org 2026-09-03; formerly T1562.008)*
 **Detection:** `ALARM-CloudTrailTampering`
 **Target:** `secondary-trail` (disposable). `primary-trail` untouched and logging throughout.
 
